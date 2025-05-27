@@ -1,0 +1,43 @@
+rules_version = '2';
+
+// Craft rules based on data in your Firestore database
+// allow write: if firestore.get(
+//    /databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin;
+service firebase.storage {
+  match /b/{bucket}/o {
+    // ユーザーごとのチャットファイルへのアクセス制御
+    // 認証されたユーザーは、自分の user_id と一致するフォルダ内のファイルに対して
+    // 読み取り (read) と書き込み (create, update, delete を含む write) を許可します。
+    match /chat_files/{userId}/{allPaths=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 必要に応じて他のパスに対するルールもここに追加できます。
+    // 例えば、すべてのファイルへのデフォルトアクセスを拒否する場合（上記ルールにマッチしない場合）
+    // match /{allPaths=**} { // この行は chat-files よりも後に評価されるように配置
+    //   allow read, write: if false;
+    // }
+
+    // ユーザーは自身のチャット添付ファイルのみアップロード可能
+    // /chat_attachments/{userId}/{roomId}/{filePath}
+    match /chat_attachments/{userId}/{roomId}/{allPaths=**} {
+      // 認証済みユーザーは読み取り可能 (ルームメンバーなど、より詳細な条件を推奨)
+      allow read: if request.auth != null; 
+      // 書き込みは認証済みユーザーで、かつパスのuserIdが自身のuidと一致する場合のみ許可
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 他に必要なパスのルールがあればここに追加します。
+    // 例: プロフィール画像用パスなど
+    // match /profile_images/{userId}/{allPaths=**} {
+    //   allow read: if true; // 全員読み取り可など
+    //   allow write: if request.auth != null && request.auth.uid == userId;
+    // }
+
+    // 上記のルールにマッチしない他のすべてのファイルへのアクセスをデフォルトで拒否する場合は、
+    // 最後に以下のようなルールを追加することを検討してください。
+    // match /{allPaths=**} {
+    //   allow read, write: if false;
+    // }
+  }
+}

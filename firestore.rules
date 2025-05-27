@@ -1,0 +1,60 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // roomsコレクション
+    match /rooms/{roomId} {
+      // 認証済みのユーザーはルーム一覧を読み取り可能
+      allow list, get: if request.auth != null;
+      // ルームの作成は認証済みのユーザーで、かつuser_idが自身のuidと一致する場合のみ許可
+      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+      // ルームの更新や削除は、そのルームを作成したユーザーのみ許可 (例)
+      // allow update, delete: if request.auth != null && resource.data.user_id == request.auth.uid;
+      // 必要に応じてより詳細なルールを設定
+    }
+    // messagesコレクション
+    match /messages/{messageId} {
+      // 認証済みのユーザーはメッセージを読み取り可能 (特定のルームのメッセージのみに制限することを推奨)
+      allow list, get: if request.auth != null;
+      // メッセージの作成は認証済みのユーザーで、かつuser_idが自身のuidと一致する場合のみ許可
+      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+      // メッセージの更新や削除は、そのメッセージを送信したユーザーのみ許可 (例)
+      // allow update, delete: if request.auth != null && resource.data.user_id == request.auth.uid;
+      // 必要に応じてより詳細なルールを設定
+    }
+
+    // user_tag (既存のルール)
+    match /user_tag/{tagId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.user_id;
+      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+    }
+
+    // user_documents (既存のルール)
+    match /user_documents/{userDocId} {
+      allow read: if request.auth != null && request.auth.uid == resource.data.user_id;
+      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.user_id;
+    }
+
+    // document_metadata (既存のルール)
+    match /document_metadata/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // posts (既存のルール)
+    match /posts/{postId} {
+      allow get, list: if request.auth != null && resource.data.user_id == request.auth.uid;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.user_id;
+      allow delete: if request.auth != null && resource.data.user_id == request.auth.uid;
+      allow update: if false;
+    }
+
+    // デフォルトで他のすべてのドキュメントへのアクセスを拒否 (重要)
+    // このルールは、上記で明示的に許可されていない他のすべてのパスへのアクセスを防ぎます。
+    // 特定のコレクションのルールよりも後に記述する必要があります。
+     match /{document=**} {
+       allow read, write: if false;
+     }
+  }
+}
