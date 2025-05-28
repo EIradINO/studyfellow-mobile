@@ -8,8 +8,9 @@
  */
 
 // 他のファイルで定義された関数をエクスポート
-export * from "./process-document";
-export * from "./generate-response-mobile";
+export * from "./process-document.js";
+export * from "./generate-response-mobile.js";
+export * from "./create-userdata.js";
 // export * from "./create-userdata";
 // Firebase Admin SDKの初期化やdbインスタンスは、
 // 各関数ファイル内で個別に行うか、共通の初期化ファイルを作成してそこからインポートすることを検討してください。

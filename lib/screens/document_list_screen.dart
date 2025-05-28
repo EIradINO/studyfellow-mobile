@@ -21,15 +21,24 @@ class _DocumentListScreenState extends State<DocumentListScreen> {
   // 科目リストとPathプレフィックスのマッピング
   final Map<String, String> _subjectPathMap = {
     '英語': 'raw_documents/english/',
+    '英検': 'raw_documents/english-test/',
     '化学': 'raw_documents/chemistry/',
-    '化学基礎': 'raw_documents/chemistry_basic/',
-    '現代文': 'raw_documents/modern_japanese_literature/',
+    '化学基礎': 'raw_documents/chemistry-basic/',
+    '現代文': 'raw_documents/modern-japanese/',
+    '古典': 'raw_documents/classic-japanese/',
     '数学': 'raw_documents/mathematics/',
     '生物': 'raw_documents/biology/',
-    '生物基礎': 'raw_documents/biology_basic/',
+    '生物基礎': 'raw_documents/biology-basic/',
     '物理': 'raw_documents/physics/',
-    '物理基礎': 'raw_documents/physics_basic/',
-    // 必要に応じて実際のディレクトリ名に修正してください
+    '物理基礎': 'raw_documents/physics-basic/',
+    '公共': 'raw_documents/public/',
+    '小論文': 'raw_documents/essay/',
+    '情報': 'raw_documents/information/',
+    '世界史探究': 'raw_documents/world-history/',
+    '日本史探究': 'raw_documents/japan-history/',
+    '地理探究': 'raw_documents/geography/',
+    '政治・経済': 'raw_documents/politics-economy/',
+    '倫理': 'raw_documents/ethics/',
   };
 
   @override

@@ -5,6 +5,8 @@ import 'package:file_picker/file_picker.dart'; // file_pickerをインポート
 import 'dart:io'; // Fileクラスのためにインポート
 import 'package:firebase_storage/firebase_storage.dart'; // Firebase Storageをインポート
 import 'package:path/path.dart' as p; // pathパッケージをインポート (basenameのため)
+import 'package:http/http.dart' as http; // httpパッケージをインポート
+import 'dart:convert'; // jsonDecodeのためにインポート
 
 class QuestionScreen extends StatefulWidget {
   const QuestionScreen({super.key});
@@ -233,6 +235,11 @@ class _QuestionScreenState extends State<QuestionScreen> {
       });
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
+      // メッセージ送信成功後に関数を呼び出す
+      if (_currentRoomId != null) {
+        await _callGenerateResponseMobile(_currentRoomId!);
+      }
+
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('メッセージの送信に失敗しました: $e')),
@@ -242,6 +249,45 @@ class _QuestionScreenState extends State<QuestionScreen> {
       setState(() {
         _isSendingMessage = false;
       });
+    }
+  }
+
+  // Firebase Functionsを呼び出すメソッド
+  Future<void> _callGenerateResponseMobile(String roomId) async {
+    // !注意! こちらはローカル開発時のURLです。
+    // デプロイ環境に合わせてURLを修正してください。
+    // FirebaseプロジェクトIDとリージョンを適切に設定してください。
+    const String projectId = "studyfellow-42d35";
+    const String region = "asia-northeast1"; // generate-response-mobileのデプロイリージョン
+    // final url = Uri.parse("http://127.0.0.1:5001/$projectId/$region/generateResponseMobile");
+    // デプロイ後のURL例:
+    final url = Uri.parse("https://asia-northeast1-$projectId.cloudfunctions.net/generateResponseMobile");
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          "Content-Type": "application/json",
+          // 必要であればAuthorizationヘッダーなどを追加
+          // "Authorization": "Bearer YOUR_ID_TOKEN",
+        },
+        body: jsonEncode({"room_id": roomId}),
+      );
+
+      if (response.statusCode == 200) {
+        print("generateResponseMobile called successfully: ${response.body}");
+        // ここで必要であればレスポンスに基づいたUI更新などを行う
+      } else {
+        print("Failed to call generateResponseMobile. Status code: ${response.statusCode}, Body: ${response.body}");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('AIの応答取得に失敗しました (HTTP ${response.statusCode})')),
+        );
+      }
+    } catch (e) {
+      print("Error calling generateResponseMobile: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('AIの応答取得中にエラーが発生しました: $e')),
+      );
     }
   }
 

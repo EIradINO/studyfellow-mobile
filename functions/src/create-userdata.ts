@@ -1,49 +1,47 @@
-import {region as regionV1, EventContext} from "firebase-functions/v1";
-import {UserRecord as AuthUserRecord} from "firebase-functions/v1/auth"; // v1 auth UserRecord
 import * as logger from "firebase-functions/logger";
-import * as admin from "firebase-admin";
+import {AuthBlockingEvent, beforeUserCreated} from "firebase-functions/v2/identity";
+import {initializeApp, getApps} from "firebase-admin/app";
+import {getFirestore} from "firebase-admin/firestore";
+import { UserRecord } from 'firebase-admin/auth';
 
-// Firebase Admin SDKの初期化（すでに行われていなければ）
-if (admin.apps.length === 0) {
-  admin.initializeApp();
+// getApps() を使って、既に初期化されているか確認
+if (getApps().length === 0) {
+  initializeApp();
 }
-const db = admin.firestore();
 
-function generateRandomAlphanumeric(length: number): string {
-  const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let result = "";
-  const charactersLength = characters.length;
-  for (let i = 0; i < length; i++) {
-    result += characters.charAt(Math.floor(Math.random() * charactersLength));
+// ランダムなユーザー名を生成する簡単な関数
+const generateRandomUserName = (): string => {
+  const randomSuffix = Math.random().toString(36).substring(2, 10);
+  return `user_${randomSuffix}`;
+};
+
+export const createUserData = beforeUserCreated(async (event: AuthBlockingEvent) => {
+  if (!event.data) {
+    logger.error("Event data is missing");
+    return;
   }
-  return result;
-}
+  logger.info("New user creation process started:", event.data.uid);
 
-export const onCreateUserDocument = regionV1("asia-northeast1")
-  .auth.user().onCreate(async (user: AuthUserRecord, context: EventContext) => {
-    // user は AuthUserRecord オブジェクト
-    logger.info(`User created: ${user.uid}`, {user});
+  const {uid, displayName, email, photoURL} = event.data as UserRecord;
 
-    const uid = user.uid;
-    const displayName = user.displayName || ""; // Googleログインなら通常存在するが、念のためフォールバック
-    const createdAt = admin.firestore.FieldValue.serverTimestamp(); // Firestoreのサーバータイムスタンプ
-    const userName = generateRandomAlphanumeric(12);
+  const finalDisplayName = displayName || "";
 
-    const userData = {
-      uid: uid,
-      created_at: createdAt,
-      display_name: displayName,
-      user_name: userName,
-      // 必要に応じて他の初期フィールドを追加
-    };
+  const newUser = {
+    user_id: uid,
+    user_name: generateRandomUserName(),
+    display_name: finalDisplayName,
+    email: email || "",
+    photo_url: photoURL || "",
+    created_at: new Date(),
+  };
 
-    logger.info(`Attempting to create user document for UID: ${uid}`, userData);
-
-    try {
-      await db.collection("users").doc(uid).set(userData);
-      logger.info(`Successfully created user document for UID: ${uid}`);
-    } catch (error) {
-      logger.error(`Error creating user document for UID: ${uid}:`, error);
-    }
-    return null;
-  }); 
+  try {
+    const firestore = getFirestore();
+    await firestore.collection("users").doc(uid).set(newUser);
+    logger.info("User data created in Firestore for user:", uid);
+    return;
+  } catch (error) {
+    logger.error("Error creating user data in Firestore:", error);
+    throw new Error(`Failed to create user data for user ${uid}`);
+  }
+});
