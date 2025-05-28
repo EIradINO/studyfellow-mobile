@@ -331,18 +331,36 @@ class _QuestionScreenState extends State<QuestionScreen> {
 
   // メッセージアイテムのUIを構築するメソッド
   Widget _buildMessageItem(DocumentSnapshot messageDoc) {
-    Map<String, dynamic> data = messageDoc.data()! as Map<String, dynamic>; // データ取得
-    bool isUser = data['role'] == 'user'; // ユーザー自身のメッセージか判定（currentUser.uidと比較も可）
-    if (_auth.currentUser != null && data['user_id'] == _auth.currentUser!.uid) {
+    Map<String, dynamic> data = messageDoc.data()! as Map<String, dynamic>; 
+    bool isUser = false; // デフォルトは相手（modelなど）
+    final currentUser = _auth.currentUser;
+    if (currentUser != null && data['user_id'] == currentUser.uid) {
       isUser = true;
     } else if (data['role'] == 'model') {
       isUser = false;
-    } // それ以外はとりあえずuser扱い (UIデバッグ用)
+    } else {
+      // user_idが一致せず、roleもmodelでない場合はログを出しておく（デバッグ用）
+      // logger.warn("Unknown message role or user_id mismatch: ${messageDoc.id}");
+      // デフォルトのisUserのまま（相手扱い）にするか、エラー表示にするか検討
+    }
     
-    String messageType = data['type'] ?? 'text';
-    String content = data['content'] ?? '';
-    String? fileUrl = data['file_url'];
-    String? fileName = data['file_name'];
+    String messageType = (data['type'] is String ? data['type'] : 'text') as String;
+    String content = (data['content'] is String ? data['content'] : '') as String;
+    String? fileUrl = data['file_url'] is String ? data['file_url'] as String? : null;
+    String? fileName = data['file_name'] is String ? data['file_name'] as String? : null;
+
+    // roleもStringであることを期待
+    String role = (data['role'] is String ? data['role'] : 'user') as String;
+    // isUserの再判定 (roleに基づいてより明確に)
+    if (role == 'user' && currentUser != null && data['user_id'] == currentUser.uid) {
+        isUser = true;
+    } else if (role == 'model') {
+        isUser = false;
+    } else {
+        // 想定外のroleの場合や、userだがID不一致の場合など。UI上は相手のメッセージとして表示される。
+        print("Warning: Message ${messageDoc.id} has role '$role' and user_id '${data['user_id']}', but current user is '${currentUser?.uid}'. Displaying as other.");
+        isUser = false; // 安全のため相手側の表示にする
+    }
 
     Widget messageContent;
     switch (messageType) {
