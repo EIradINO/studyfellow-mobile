@@ -77,7 +77,6 @@ class _QuestionScreenState extends State<QuestionScreen> {
         });
       }
     } catch (e) {
-      print("初期ルームの読み込みに失敗しました: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('初期ルームの読み込みに失敗しました: $e')),
       );
@@ -439,7 +438,6 @@ class _QuestionScreenState extends State<QuestionScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('メッセージの送信に失敗しました: $e')),
       );
-      print("メッセージ送信エラー: $e");
     } finally {
       setState(() {
         _isSendingMessage = false;
@@ -470,16 +468,13 @@ class _QuestionScreenState extends State<QuestionScreen> {
       );
 
       if (response.statusCode == 200) {
-        print("generateResponseMobile called successfully: ${response.body}");
         // ここで必要であればレスポンスに基づいたUI更新などを行う
       } else {
-        print("Failed to call generateResponseMobile. Status code: ${response.statusCode}, Body: ${response.body}");
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('AIの応答取得に失敗しました (HTTP ${response.statusCode})')),
         );
       }
     } catch (e) {
-      print("Error calling generateResponseMobile: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('AIの応答取得中にエラーが発生しました: $e')),
       );
@@ -509,7 +504,6 @@ class _QuestionScreenState extends State<QuestionScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('画像選択エラー: $e')),
       );
-      print("画像選択エラー: $e");
     }
   }
 
@@ -533,7 +527,6 @@ class _QuestionScreenState extends State<QuestionScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('ファイル選択エラー: $e')),
       );
-      print("ファイル選択エラー: $e");
     }
   }
 
@@ -584,7 +577,6 @@ class _QuestionScreenState extends State<QuestionScreen> {
       isUser = false;
     } else {
       // user_idが一致せず、roleもmodelでない場合はログを出しておく（デバッグ用）
-      // logger.warn("Unknown message role or user_id mismatch: ${messageDoc.id}");
       // デフォルトのisUserのまま（相手扱い）にするか、エラー表示にするか検討
     }
     
@@ -635,7 +627,6 @@ class _QuestionScreenState extends State<QuestionScreen> {
         messageContent = InkWell(
           onTap: () {
             // TODO: ファイルダウンロードまたはプレビュー処理 (url_launcherなど)
-            print('File tapped: $fileUrl');
           },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
