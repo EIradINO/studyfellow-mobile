@@ -7,6 +7,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io'; // For File, if not on web
 import 'package:path/path.dart' as p; // For p.basename
 import 'package:flutter/foundation.dart' show kIsWeb; // To check platform
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class RecordScreen extends StatefulWidget {
   const RecordScreen({super.key});
@@ -369,16 +371,20 @@ class _RecordScreenState extends State<RecordScreen> {
           }
         }
 
-        await _firestore.collection('posts').add({
+        final postRef = await _firestore.collection('posts').add({
           'user_id': _userId,
           'document_id': documentId,
           'start_page': int.parse(_startPageController.text),
           'end_page': int.parse(_endPageController.text),
-          'duration': (_selectedHours * 60) + _selectedMinutes, // 合計分に変換
+          'duration': (_selectedHours * 60) + _selectedMinutes,
           'content': _commentController.text,
           'created_at': FieldValue.serverTimestamp(),
-          'file_urls': fileUrls, // Firestoreにファイル情報を保存
+          'file_urls': fileUrls,
         });
+        print('post保存完了: ${postRef.id}');
+        // AI呼び出し
+        await _callGeneratePostResponseMobile(postRef.id);
+        print('AI呼び出し完了');
         if (!mounted) return;
         Navigator.pop(context); // Close the bottom sheet
         ScaffoldMessenger.of(context).showSnackBar(
@@ -585,5 +591,35 @@ class _RecordScreenState extends State<RecordScreen> {
     _endPageController.dispose();
     _commentController.dispose();
     super.dispose();
+  }
+
+  Future<void> _callGeneratePostResponseMobile(String postId) async {
+    const String url = "https://asia-northeast1-studyfellow-42d35.cloudfunctions.net/generatePostResponseMobile";
+    print('AI呼び出し開始: $postId');
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"post_id": postId}),
+      );
+      print('AI応答ステータス: ${response.statusCode}');
+      print('AI応答ボディ: ${response.body}');
+      if (response.statusCode == 200) {
+        // 必要ならSnackBar等で表示
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('AI応答取得失敗: ${response.statusCode}')), 
+          );
+        }
+      }
+    } catch (e) {
+      print('AI応答呼び出しエラー: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('AI呼び出しエラー: $e')),
+        );
+      }
+    }
   }
 } 

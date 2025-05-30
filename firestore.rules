@@ -71,6 +71,11 @@ service cloud.firestore {
       allow create: if request.auth != null;
     }
 
+    // post_messages_to_ai コレクション
+    match /post_messages_to_ai/{msgId} {
+      allow read, write: if true;
+    }
+
     // デフォルトで他のすべてのドキュメントへのアクセスを拒否 (重要)
     // このルールは、上記で明示的に許可されていない他のすべてのパスへのアクセスを防ぎます。
     // 特定のコレクションのルールよりも後に記述する必要があります。

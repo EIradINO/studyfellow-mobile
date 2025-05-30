@@ -32,6 +32,11 @@ class _QuestionScreenState extends State<QuestionScreen> {
 
   bool _isSendingMessage = false; // メッセージ送信中フラグ
 
+  // 参考書選択用の変数を追加
+  Map<String, dynamic>? _selectedReferenceBook;
+  int? _selectedStartPage;
+  int? _selectedEndPage;
+
   @override
   void initState() {
     super.initState();
@@ -159,6 +164,140 @@ class _QuestionScreenState extends State<QuestionScreen> {
     );
   }
 
+  // 参考書選択ダイアログ
+  Future<void> _showReferenceBookDialog() async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('参考書を選択するにはログインが必要です')),
+      );
+      return;
+    }
+    // user_documentsから自分の教材を取得
+    final userDocsSnapshot = await _firestore
+        .collection('user_documents')
+        .where('user_id', isEqualTo: currentUser.uid)
+        .get();
+    if (userDocsSnapshot.docs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('登録済みの教材がありません')),
+      );
+      return;
+    }
+    // document_idでdocument_metadataを取得
+    List<Map<String, dynamic>> allBooks = [];
+    for (var userDoc in userDocsSnapshot.docs) {
+      final docId = userDoc['document_id'];
+      if (docId == null) continue;
+      final metaSnap = await _firestore.collection('document_metadata').doc(docId).get();
+      if (metaSnap.exists) {
+        final data = metaSnap.data()!;
+        allBooks.add({...data, 'id': docId});
+      }
+    }
+    Map<String, dynamic>? selectedBook;
+    int? startPage;
+    int? endPage;
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            // 1. 教材一覧から選択
+            if (selectedBook == null) {
+              return AlertDialog(
+                title: const Text('参考書を選択'),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  height: 350,
+                  child: ListView.builder(
+                    itemCount: allBooks.length,
+                    itemBuilder: (context, idx) {
+                      final b = allBooks[idx];
+                      return ListTile(
+                        title: Text(b['file_name'] ?? '', overflow: TextOverflow.ellipsis),
+                        subtitle: b['subject'] != null ? Text(b['subject']) : null,
+                        onTap: () {
+                          selectedBook = b;
+                          setState(() {});
+                        },
+                      );
+                    },
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('キャンセル'),
+                  ),
+                ],
+              );
+            }
+            // 2. ページ範囲入力
+            return AlertDialog(
+              title: Text(selectedBook!['file_name'] ?? ''),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (selectedBook!['subject'] != null)
+                    Text('科目: ${selectedBook!['subject']}'),
+                  Text('ページ範囲 (1〜${selectedBook!['total_pages'] ?? 1})'),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: '開始ページ'),
+                          onChanged: (v) {
+                            startPage = int.tryParse(v);
+                            setState(() {});
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: '終了ページ'),
+                          onChanged: (v) {
+                            endPage = int.tryParse(v);
+                            setState(() {});
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (startPage != null && endPage != null && (startPage! > endPage! || startPage! < 1 || endPage! > (selectedBook!['total_pages'] ?? 1)))
+                    const Text('ページ範囲が不正です', style: TextStyle(color: Colors.red)),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('キャンセル'),
+                ),
+                TextButton(
+                  onPressed: (startPage != null && endPage != null && startPage! <= endPage! && startPage! >= 1 && endPage! <= (selectedBook!['total_pages'] ?? 1))
+                      ? () {
+                          setState(() {
+                            _selectedReferenceBook = selectedBook;
+                            _selectedStartPage = startPage;
+                            _selectedEndPage = endPage;
+                          });
+                          Navigator.pop(context);
+                        }
+                      : null,
+                  child: const Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   // メッセージ送信処理
   Future<void> _sendMessage() async {
     if (_isSendingMessage) return; // 送信中の場合は重複実行を防ぐ
@@ -180,6 +319,40 @@ class _QuestionScreenState extends State<QuestionScreen> {
       return;
     }
 
+    // 参考書context送信
+    if (_selectedReferenceBook != null && _selectedStartPage != null && _selectedEndPage != null) {
+      setState(() { _isSendingMessage = true; });
+      try {
+        await _firestore.collection('messages').add({
+          'type': 'context',
+          'document_id': _selectedReferenceBook!['id'],
+          'start_page': _selectedStartPage,
+          'end_page': _selectedEndPage,
+          'room_id': _currentRoomId!,
+          'user_id': currentUser.uid,
+          'created_at': Timestamp.now(),
+          'role': 'user',
+          'content': text,
+        });
+        setState(() {
+          _selectedReferenceBook = null;
+          _selectedStartPage = null;
+          _selectedEndPage = null;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+        if (_currentRoomId != null) {
+          await _callGenerateResponseMobile(_currentRoomId!);
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('参考書contextメッセージの送信に失敗しました: $e')),
+        );
+      } finally {
+        setState(() { _isSendingMessage = false; });
+      }
+      return;
+    }
+
     if (text.isEmpty && _selectedImage == null && _selectedFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('メッセージ内容がありません')),
@@ -194,12 +367,26 @@ class _QuestionScreenState extends State<QuestionScreen> {
     String? fileUrl;
     String? fileName;
     String messageType = 'text'; // デフォルトはテキスト
+    String? mimeType; // MIMEタイプを格納する変数を追加
 
     try {
       // 画像が選択されている場合
       if (_selectedImage != null && _selectedImageName != null) {
         messageType = 'image';
         fileName = _selectedImageName!;
+        // 拡張子からMIMEタイプを決定
+        String extension = p.extension(_selectedImage!.path).toLowerCase();
+        if (extension == '.jpg' || extension == '.jpeg') {
+          mimeType = 'image/jpeg';
+        } else if (extension == '.png') {
+          mimeType = 'image/png';
+        } else if (extension == '.gif') {
+          mimeType = 'image/gif';
+        } else if (extension == '.heic' || extension == '.heif') { // HEIC/HEIF形式を追加
+          mimeType = 'image/heic'; // または 'image/heif'
+        }
+        // 他の画像形式も必要に応じて追加
+        
         final ref = _storage.ref('chat_attachments/${currentUser.uid}/$_currentRoomId/${p.basename(_selectedImage!.path)}');
         UploadTask uploadTask = ref.putFile(_selectedImage!);
         TaskSnapshot snapshot = await uploadTask;
@@ -209,6 +396,13 @@ class _QuestionScreenState extends State<QuestionScreen> {
       else if (_selectedFile != null && _selectedFileName != null) {
         messageType = 'file';
         fileName = _selectedFileName!;
+        // 拡張子からMIMEタイプを決定 (PDFの場合)
+        String extension = p.extension(_selectedFile!.path).toLowerCase();
+        if (extension == '.pdf') {
+          mimeType = 'application/pdf';
+        }
+        // 他のファイル形式も必要に応じて追加
+
         final ref = _storage.ref('chat_attachments/${currentUser.uid}/$_currentRoomId/${p.basename(_selectedFile!.path)}');
         UploadTask uploadTask = ref.putFile(_selectedFile!);
         TaskSnapshot snapshot = await uploadTask;
@@ -220,6 +414,7 @@ class _QuestionScreenState extends State<QuestionScreen> {
         'created_at': Timestamp.now(),
         'file_name': fileName, 
         'file_url': fileUrl,
+        'mime_type': mimeType, // mime_typeフィールドを追加
         'role': 'user',
         'room_id': _currentRoomId!,
         'type': messageType,
@@ -322,7 +517,10 @@ class _QuestionScreenState extends State<QuestionScreen> {
   Future<void> _pickFile() async {
     Navigator.pop(context); // ボトムシートを閉じる
     try {
-      final FilePickerResult? result = await FilePicker.platform.pickFiles();
+      final FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom, // カスタムタイプを指定
+        allowedExtensions: ['pdf'], // pdfファイルのみを許可
+      );
       if (result != null && result.files.single.path != null) {
         setState(() {
           _selectedFile = File(result.files.single.path!);
@@ -593,6 +791,29 @@ class _QuestionScreenState extends State<QuestionScreen> {
                 });
               }),
             ),
+          // 参考書範囲プレビュー
+          if (_selectedReferenceBook != null && _selectedStartPage != null && _selectedEndPage != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+              child: Card(
+                color: Colors.orange.shade50,
+                child: ListTile(
+                  leading: const Icon(Icons.menu_book, color: Colors.orange),
+                  title: Text(_selectedReferenceBook!['file_name'] ?? '', overflow: TextOverflow.ellipsis),
+                  subtitle: Text('ページ範囲: ${_selectedStartPage}〜${_selectedEndPage}'),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.cancel, color: Colors.grey),
+                    onPressed: () {
+                      setState(() {
+                        _selectedReferenceBook = null;
+                        _selectedStartPage = null;
+                        _selectedEndPage = null;
+                      });
+                    },
+                  ),
+                ),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
@@ -600,6 +821,10 @@ class _QuestionScreenState extends State<QuestionScreen> {
                 IconButton(
                   icon: const Icon(Icons.add),
                   onPressed: _isSendingMessage ? null : _showAttachmentOptions, 
+                ),
+                IconButton(
+                  icon: const Icon(Icons.menu_book),
+                  onPressed: _isSendingMessage ? null : _showReferenceBookDialog,
                 ),
                 Expanded(
                   child: TextField(

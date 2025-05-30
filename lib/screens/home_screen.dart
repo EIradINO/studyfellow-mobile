@@ -3,6 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart'; // Date formatting
 import 'package:url_launcher/url_launcher.dart'; // For launching URLs
+import 'package:file_picker/file_picker.dart';
+import 'package:mime/mime.dart';
+import 'post_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -162,55 +165,66 @@ class _HomeScreenState extends State<HomeScreen> {
           final content = post['content'] as String?;
           final fileUrls = (post['file_urls'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
 
-          return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    post['file_name'] ?? '教材名不明',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Icon(Icons.calendar_today, size: 16, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      Text(_formatTimestamp(createdAt), style: const TextStyle(color: Colors.grey)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Icon(Icons.timer_outlined, size: 16, color: Colors.blueAccent),
-                      const SizedBox(width: 4),
-                      Text('勉強時間: ${_formatDuration(duration)}', style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.w500)),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  if (startPage != null && endPage != null)
+          return InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PostDetailScreen(postId: post['id']),
+                ),
+              );
+            },
+            child: Card(
+              margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      post['file_name'] ?? '教材名不明',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Icon(Icons.menu_book, size: 16, color: Colors.green),
+                        const Icon(Icons.calendar_today, size: 16, color: Colors.grey),
                         const SizedBox(width: 4),
-                        Text('範囲: P.$startPage - P.$endPage', style: const TextStyle(color: Colors.green)),
+                        Text(_formatTimestamp(createdAt), style: const TextStyle(color: Colors.grey)),
                       ],
                     ),
-                  if (content != null && content.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Text('コメント:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[700])),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.timer_outlined, size: 16, color: Colors.blueAccent),
+                        const SizedBox(width: 4),
+                        Text('勉強時間: ${_formatDuration(duration)}', style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
                     const SizedBox(height: 4),
-                    Text(content, style: TextStyle(fontSize: 15, color: Colors.grey[800])),
-                  ],
-                  if (fileUrls.isNotEmpty) ...[
+                    if (startPage != null && endPage != null)
+                      Row(
+                        children: [
+                          const Icon(Icons.menu_book, size: 16, color: Colors.green),
+                          const SizedBox(width: 4),
+                          Text('範囲: P.$startPage - P.$endPage', style: const TextStyle(color: Colors.green)),
+                        ],
+                      ),
+                    if (content != null && content.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text('コメント:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[700])),
+                      const SizedBox(height: 4),
+                      Text(content, style: TextStyle(fontSize: 15, color: Colors.grey[800])),
+                    ],
+                    if (fileUrls.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text('添付ファイル:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[700])),
+                      const SizedBox(height: 4),
+                      _buildAttachmentList(fileUrls),
+                    ],
                     const SizedBox(height: 12),
-                    Text('添付ファイル:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[700])),
-                    const SizedBox(height: 4),
-                    _buildAttachmentList(fileUrls),
                   ],
-                ],
+                ),
               ),
             ),
           );
@@ -257,5 +271,76 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     }
+  }
+
+  Future<void> _showPostMessageToAIDialog(String postId) async {
+    final TextEditingController contentController = TextEditingController();
+    String type = 'text';
+    final user = _auth.currentUser;
+    PlatformFile? selectedFile;
+    String? selectedMimeType;
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('AIに質問'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: contentController,
+                    decoration: const InputDecoration(labelText: '質問内容'),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: () async {
+                      FilePickerResult? result = await FilePicker.platform.pickFiles();
+                      if (result != null && result.files.single.path != null) {
+                        setState(() {
+                          selectedFile = result.files.single;
+                          selectedMimeType = lookupMimeType(result.files.single.path!) ?? '';
+                          type = 'file';
+                        });
+                      }
+                    },
+                    child: Text(selectedFile == null ? 'ファイルを選択' : 'ファイル再選択'),
+                  ),
+                  if (selectedFile != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Text('選択ファイル: ${selectedFile!.name}\nMIME: ${selectedMimeType ?? ''}', style: const TextStyle(fontSize: 13)),
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('キャンセル'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    if (user == null) return;
+                    await _firestore.collection('post_messages_to_ai').add({
+                      'post_id': postId,
+                      'type': type,
+                      'content': contentController.text,
+                      'created_at': FieldValue.serverTimestamp(),
+                      'role': 'user',
+                      'user_id': user.uid,
+                      'file_name': selectedFile?.name,
+                      'mime_type': selectedMimeType,
+                    });
+                    Navigator.pop(context);
+                  },
+                  child: const Text('送信'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 } 
